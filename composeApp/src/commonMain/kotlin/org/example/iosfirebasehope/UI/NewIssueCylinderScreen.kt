@@ -2093,3 +2093,41 @@ fun IssuedInventoryCard(
         }
     }
 }
+
+
+// Firestore Function to Fetch Cylinders by Gas Type, Volume Type, and Status
+suspend fun fetchCylindersByStatus(db: FirebaseFirestore, gasType: String, volumeType: String, status: String): List<String> {
+    val cylinders = db.collection("Cylinders").document("Cylinders").get()
+    val cylinderDetails = cylinders.get("CylinderDetails") as? List<Map<String, String>> ?: emptyList()
+    return cylinderDetails
+        .filter { it["Gas Type"] == gasType && it["Volume Type"] == volumeType && it["Status"] == status }
+        .map { it["Serial Number"] ?: "" } // Extract serial numbers
+}
+
+// Data Classes
+data class IssuedCylinder(
+    val serialNumber: String, // Added serialNumber property
+    val gasType: String,
+    val volumeType: String,
+    val quantity: Int,
+    val totalPrice: Double
+)
+
+// Firestore Functions
+suspend fun fetchCustomers(db: FirebaseFirestore): List<String> {
+    return try {
+        // Navigate to the target document
+        val customerDetailsRef = db.collection("Customers")
+            .document("Names")
+            .get()
+
+        // Extract the CustomerDetails array from the document
+        val customerDetails = customerDetailsRef.get("CustomerDetails") as? List<Map<String, String>> ?: emptyList()
+
+        // Map the "Name" fields from each map in the array
+        customerDetails.mapNotNull { it["Name"] }
+    } catch (e: Exception) {
+        println("Error fetching customers: ${e.message}")
+        emptyList()
+    }
+}
