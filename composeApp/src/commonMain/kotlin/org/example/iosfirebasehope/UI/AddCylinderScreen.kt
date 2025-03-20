@@ -23,13 +23,15 @@ import dev.gitlive.firebase.firestore.FieldValue
 import kotlinx.coroutines.launch
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import dev.gitlive.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.delay
 import org.example.iosfirebasehope.navigation.components.AddCylinderScreenComponent
 import org.example.iosfirebasehope.navigation.events.AddCylinderScreenEvent
 
 @Composable
-fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFirestore) {
+fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFirestore, cylinderDetails: List<Map<String, String>>) {
     val coroutineScope = rememberCoroutineScope()
 
     var serialNumber by remember { mutableStateOf("") }
@@ -39,7 +41,6 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
     var selectedStatus by remember { mutableStateOf<String?>(null) }
     var remarks by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("") }
-    var loading by remember { mutableStateOf(false) }
 
     val gasTypes = remember { mutableStateListOf<String>() }
     val volumeTypes = remember { mutableStateListOf<String>() }
@@ -48,7 +49,11 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
     var volumeTypeDropdownExpanded by remember { mutableStateOf(false) }
     var statusDropdownExpanded by remember { mutableStateOf(false) }
 
-    val scaffoldState = rememberScaffoldState()
+    var isAddingCylinder by remember { mutableStateOf(false) } // Track if cylinder is being added
+    var showDialog by remember { mutableStateOf(false) } // Control dialog visibility
+    var dialogMessage by remember { mutableStateOf("") } // Store dialog message
+
+    var isSerialNumberExists by remember { mutableStateOf(false) } // Track if Serial Number exists
 
     // Fetch gas types on launch
     LaunchedEffect(Unit) {
@@ -59,8 +64,39 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
 
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    // Function to show dialog with a message
+    fun showDialogWithMessage(message: String) {
+        dialogMessage = message
+        showDialog = true
+        // Automatically close the dialog after 3 seconds
+        coroutineScope.launch {
+            delay(9000)
+            showDialog = false
+        }
+    }
+
+    // Function to validate input fields
+    fun validateInputs(): Boolean {
+        return if (selectedGasType == "LPG") {
+            // For LPG, check Gas Type, Volume Type, Quantity, and Status
+            if (selectedGasType.isNullOrEmpty() || selectedVolumeType.isNullOrEmpty() || quantity.isEmpty() || selectedStatus.isNullOrEmpty()) {
+                showDialogWithMessage("Please fill all required fields: Gas Type, Volume Type, Quantity, and Status.")
+                false
+            } else {
+                true
+            }
+        } else {
+            // For non-LPG, check Gas Type, Volume Type, Serial Number, and Status
+            if (selectedGasType.isNullOrEmpty() || selectedVolumeType.isNullOrEmpty() || serialNumber.isEmpty() || selectedStatus.isNullOrEmpty()) {
+                showDialogWithMessage("Please fill all required fields: Gas Type, Volume Type, Serial Number, and Status.")
+                false
+            } else {
+                true
+            }
+        }
+    }
+
     Scaffold(
-        scaffoldState = scaffoldState,
         topBar = {
             TopAppBar(
                 title = { Text("Add Cylinder", color = Color.White) },
@@ -131,12 +167,7 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                         dropdownExpanded = volumeTypeDropdownExpanded,
                         fetchDataOnItemClick = {
                             if (selectedGasType == null) {
-                                coroutineScope.launch {
-                                    scaffoldState.snackbarHostState.showSnackbar(
-                                        "Please select a gas type first",
-                                        duration = SnackbarDuration.Short
-                                    )
-                                }
+                                showDialogWithMessage("Please select a gas type first")
                             }
                         }
                     )
@@ -154,18 +185,32 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                 cursorColor = Color(0xFF2f80eb)
                             ),
                             value = serialNumber,
-                            onValueChange = { serialNumber = it },
+                            onValueChange = { newSerialNumber ->
+                                serialNumber = newSerialNumber
+                                // Check if the Serial Number already exists in cylinderDetails
+                                isSerialNumberExists = cylinderDetails.any { it["Serial Number"] == newSerialNumber }
+                            },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(Color.White, RoundedCornerShape(8.dp))
                                 .border(1.dp, Color(0xFF2f80eb), RoundedCornerShape(8.dp)),
                             keyboardOptions = KeyboardOptions.Default.copy(
+                                keyboardType = KeyboardType.Number,
                                 imeAction = ImeAction.Done
                             ),
                             keyboardActions = KeyboardActions(
                                 onDone = { keyboardController?.hide() }
                             )
                         )
+                        // Show error message if Serial Number exists
+                        if (isSerialNumberExists) {
+                            Text(
+                                text = "Serial Number already exists!",
+                                color = Color.Red,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 4.dp)
+                            )
+                        }
                         Spacer(modifier = Modifier.height(8.dp))
                     } else {
                         Text("Quantity", color = Color(0xFF2f80eb))
@@ -183,9 +228,11 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                 .background(Color.White, RoundedCornerShape(8.dp))
                                 .border(1.dp, Color(0xFF2f80eb), RoundedCornerShape(8.dp)),
                             keyboardOptions = KeyboardOptions.Default.copy(
+                                keyboardType = KeyboardType.Number,
                                 imeAction = ImeAction.Done
                             ),
                             keyboardActions = KeyboardActions(
+
                                 onDone = { keyboardController?.hide() }
                             )
                         )
@@ -209,6 +256,7 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                             .background(if (selectedGasType == "LPG") Color.LightGray else Color.White, RoundedCornerShape(8.dp))
                             .border(1.dp, Color(0xFF2f80eb), RoundedCornerShape(8.dp)),
                         keyboardOptions = KeyboardOptions.Default.copy(
+                            keyboardType = KeyboardType.Number,
                             imeAction = ImeAction.Done
                         ),
                         keyboardActions = KeyboardActions(
@@ -259,64 +307,51 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                     // Add Cylinder Button
                     Button(
                         onClick = {
-                            loading= true
+                            if (!validateInputs()) {
+                                return@Button
+                            }
+                            isAddingCylinder = true
                             coroutineScope.launch {
                                 if (selectedGasType == "LPG") {
-                                    // Fetch LastSerial from LPG collection
-                                    val lpgDocument = db.collection("Gases").document("LPG").get()
-                                    val lastSerial = lpgDocument.get("LastSerial") as? Int ?: 0
+                                    // Validate quantity
                                     val quantityInt = quantity.toIntOrNull() ?: 0
-
                                     if (quantityInt <= 0) {
-                                        scaffoldState.snackbarHostState.showSnackbar("Please enter a valid quantity.", duration = SnackbarDuration.Short)
+                                        showDialogWithMessage("Please enter a valid quantity.")
+                                        isAddingCylinder = false
                                         return@launch
                                     }
 
-                                    // Create cylinders with updated serial numbers
-                                    val cylinders = (1..quantityInt).map { i ->
-                                        hashMapOf(
-                                            "Serial Number" to (lastSerial + i).toString(),
-                                            "Batch Number" to batchNumber,
-                                            "Gas Type" to selectedGasType,
-                                            "Volume Type" to selectedVolumeType,
-                                            "Status" to selectedStatus,
-                                            "Remarks" to remarks,
-                                            "Return Date" to ""
-                                        )
-                                    }
+                                    // Update the LPG document
+                                    val lpgDocumentRef = db.collection("Cylinders").document("LPG")
+                                    val lpgDocument = lpgDocumentRef.get()
 
-                                    // Add cylinders to Cylinders collection
-                                    db.collection("Cylinders").document("Cylinders").update(
-                                        mapOf("CylinderDetails" to FieldValue.arrayUnion(*cylinders.toTypedArray()))
-                                    )
-
-                                    // Update LastSerial in LPG collection
-                                    db.collection("Gases").document("LPG").update(
-                                        "LastSerial" to (lastSerial + quantityInt)
-                                    )
-
-                                    // Create "Customers" document and nested collections for each cylinder
-                                    cylinders.forEach { cylinder ->
-                                        val serialNumber = cylinder["Serial Number"] ?: ""
-                                        if (serialNumber.isNotEmpty()) {
-                                            val customersCollection = db.collection("Cylinders")
-                                                .document("Customers")
-                                                .collection(serialNumber)
-
-                                            // Create "Previous Customers" document with an empty array
-                                            customersCollection.document("Previous Customers")
-                                                .set(mapOf("customers" to emptyList<Map<String, String>>()))
-
-                                            // Create "Currently Issued To" document with empty fields
-                                            customersCollection.document("Currently Issued To")
-                                                .set(mapOf("name" to "", "date" to "", "price" to ""))
+                                    if (lpgDocument.exists) {
+                                        val volumeTypeKey = selectedVolumeType!!.replace(".", ",") // Ensure correct key format
+                                        val mapToUpdate = when (selectedStatus) {
+                                            "Full" -> "LPGFull"
+                                            "Empty" -> "LPGEmpty"
+                                            else -> {
+                                                showDialogWithMessage("Invalid status selected.")
+                                                isAddingCylinder = false
+                                                return@launch
+                                            }
                                         }
-                                    }
 
-                                    scaffoldState.snackbarHostState.showSnackbar(
-                                        "$quantityInt cylinders added successfully.",
-                                        duration= SnackbarDuration.Short
-                                    )
+                                        // Fetch the current quantity for the selected volume type
+                                        val currentMap = lpgDocument.get(mapToUpdate) as? Map<String, Int>
+                                        val currentQuantity = currentMap?.get(volumeTypeKey) ?: 0
+
+                                        // Update the quantity
+                                        val updatedQuantity = currentQuantity + quantityInt
+                                        val updateData = mapOf("$mapToUpdate.$volumeTypeKey" to updatedQuantity)
+
+                                        // Perform the update
+                                        lpgDocumentRef.update(updateData)
+
+                                        showDialogWithMessage("$quantityInt LPG cylinders added to $mapToUpdate.")
+                                    } else {
+                                        showDialogWithMessage("LPG document not found.")
+                                    }
                                 } else {
                                     // Non-LPG logic
                                     val cylinderDetails = hashMapOf(
@@ -326,7 +361,10 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                         "Volume Type" to selectedVolumeType?.replace(",", "."),
                                         "Status" to selectedStatus,
                                         "Remarks" to remarks,
-                                        "Return Date" to ""
+                                        "Notifications Date" to "",
+                                        "Issue Date" to "",
+                                        "Issued At Price" to "",
+                                        "Rent" to 0
                                     )
                                     val documentRef = db.collection("Cylinders").document("Cylinders")
                                     val documentSnapshot = documentRef.get()
@@ -355,15 +393,9 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                                     .set(mapOf("name" to "", "date" to "", "price" to ""))
                                             }
 
-                                            scaffoldState.snackbarHostState.showSnackbar(
-                                                "Cylinder Successfully Added.",
-                                                duration = SnackbarDuration.Short
-                                            )
+                                            showDialogWithMessage("Cylinder Successfully Added.")
                                         } else {
-                                            scaffoldState.snackbarHostState.showSnackbar(
-                                                "Cylinder with SerialNumber $serialNumber already exists.",
-                                                duration = SnackbarDuration.Short
-                                            )
+                                            showDialogWithMessage("Cylinder with SerialNumber $serialNumber already exists.")
                                         }
                                     } else {
                                         documentRef.set(
@@ -388,7 +420,6 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                 }
 
                                 // Clear input fields after adding
-                                loading = false
                                 serialNumber = ""
                                 batchNumber = ""
                                 selectedGasType = null
@@ -396,11 +427,14 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
                                 selectedStatus = null
                                 remarks = ""
                                 quantity = ""
+                                isAddingCylinder = false
                             }
                         },
-                        colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb)),
+                        colors = ButtonDefaults.buttonColors(
+                            backgroundColor = if (isAddingCylinder) Color.Gray else Color(0xFF2f80eb)
+                        ),
                         modifier = Modifier.fillMaxWidth(),
-                        enabled = !loading
+                        enabled = !isAddingCylinder
                     ) {
                         Text("Add Cylinder", color = Color.White)
                     }
@@ -408,6 +442,20 @@ fun AddCylinderScreenUI(component: AddCylinderScreenComponent, db: FirebaseFires
             }
         }
     )
+
+    // Dialog for showing messages
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("Message") },
+            text = { Text(dialogMessage) },
+            confirmButton = {
+                Button(onClick = { showDialog = false }, colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))) {
+                    Text("Close", color = Color.White)
+                }
+            }
+        )
+    }
 }
 
 @Composable

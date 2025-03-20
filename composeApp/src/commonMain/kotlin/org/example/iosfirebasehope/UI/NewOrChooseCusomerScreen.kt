@@ -1,43 +1,45 @@
 package org.example.iosfirebasehope.UI
 
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import dev.gitlive.firebase.firestore.FirebaseFirestore
-import iosfirebasehope.composeapp.generated.resources.Res
-import iosfirebasehope.composeapp.generated.resources.baseline_add_box_24
-import iosfirebasehope.composeapp.generated.resources.baseline_auto_mode_24
-import iosfirebasehope.composeapp.generated.resources.baseline_autorenew_24
-
-import org.example.iosfirebasehope.navigation.components.BillScreenComponent
-import org.example.iosfirebasehope.navigation.components.NewOrChooseCustomerScreenComponent
-import org.example.iosfirebasehope.navigation.events.BillScreenEvent
-import org.example.iosfirebasehope.navigation.events.NewOrChooseCustomerScreenEvent
-import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.painterResource
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
@@ -45,30 +47,50 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.IntOffset
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.launch
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import dev.gitlive.firebase.firestore.FirebaseFirestore
+import iosfirebasehope.composeapp.generated.resources.Res
+import iosfirebasehope.composeapp.generated.resources.baseline_add_box_24
+import iosfirebasehope.composeapp.generated.resources.baseline_auto_mode_24
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import org.example.iosfirebasehope.navigation.components.NewOrChooseCustomerScreenComponent
+import org.example.iosfirebasehope.navigation.events.NewOrChooseCustomerScreenEvent
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, db: FirebaseFirestore) {
     var isVisible by remember { mutableStateOf(false) }
     var showAddCustomerDialog by remember { mutableStateOf(false) }
+    var showChooseCustomerDialog by remember { mutableStateOf(false) } // State for choose customer dialog
     var isUploading = remember { mutableStateOf(false) }
-    var uploadMessage by remember { mutableStateOf<String?>(null) } // State for upload message
+    var uploadMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
+
+    var customers by remember { mutableStateOf<List<String>>(listOf("Customer 1", "Customer 2", "Customer 3")) }
+    var selectedCustomer by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         isVisible = true
+    }
+    LaunchedEffect(Unit) {
+        customers = fetchCustomers(db)
     }
 
     // Auto-dismiss the message after 2 seconds
     LaunchedEffect(uploadMessage) {
         if (uploadMessage != null) {
-            delay(2000) // Wait for 2 seconds
-            uploadMessage = null // Clear the message
+            customers= fetchCustomers(db)
+            delay(2000)
+            uploadMessage = null
         }
     }
 
@@ -82,8 +104,7 @@ fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, d
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Start
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
                         onClick = { component.onEvent(NewOrChooseCustomerScreenEvent.OnBackClick) },
@@ -129,7 +150,7 @@ fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, d
                     title = "Add New Customer",
                     iconResId = Res.drawable.baseline_add_box_24,
                     onClick = {
-                        uploadMessage = null // Clear the message
+                        uploadMessage = null
                         showAddCustomerDialog = true
                     }
                 )
@@ -151,11 +172,10 @@ fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, d
                 ActionCard2(
                     title = "Choose Existing Customer",
                     iconResId = Res.drawable.baseline_auto_mode_24,
-                    onClick = { /* Handle click */ }
+                    onClick = { showChooseCustomerDialog = true } // Show dialog
                 )
             }
 
-            // Display the upload message below the buttons
             if (uploadMessage != null) {
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
@@ -167,17 +187,17 @@ fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, d
                 )
             }
         }
-
         // Add Customer Dialog
         if (showAddCustomerDialog) {
             AddCustomerDialog2(
-                onDismiss = { showAddCustomerDialog = false },
+                onDismiss = {  },
                 onAddCustomer = { customerDetails ->
                     isUploading.value = true
                     coroutineScope.launch {
                         val success = saveCustomerToFirestore2(db, customerDetails)
                         if (success) {
                             uploadMessage = "Customer added successfully!"
+
                         } else {
                             uploadMessage = "Failed to add customer. Please try again."
                         }
@@ -185,17 +205,155 @@ fun NewOrChooseCustomerScreenUI(component: NewOrChooseCustomerScreenComponent, d
                         showAddCustomerDialog = false
                     }
                 },
-                isUploading = isUploading
+                isUploading = isUploading,
             )
+        }
+
+        // Dialog for choosing a customer
+        if (showChooseCustomerDialog) {
+            Dialog(onDismissRequest = { showChooseCustomerDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Select Customer",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        SearchableDropdown2(
+                            options = customers,
+                            selectedItem = selectedCustomer,
+                            onItemSelected = {
+                                selectedCustomer = it
+                            },
+                            onClearSelection = {
+                                selectedCustomer = null // Reset when input is cleared
+                            },
+                            placeholder = "Search customer...",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { showChooseCustomerDialog = false }) {
+                                Text("Cancel", color = MaterialTheme.colorScheme.primary)
+                            }
+                            TextButton(
+                                onClick = {
+                                    component.onEvent(NewOrChooseCustomerScreenEvent.OnChooseCustomerClick(selectedCustomer!!))
+                                },
+                                enabled = !selectedCustomer.isNullOrBlank() // Disable button if input is cleared
+                            ) {
+                                Text(
+                                    "Choose",
+                                    color = if (!selectedCustomer.isNullOrBlank())
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+
+    }
+}
+
+@Composable
+fun SearchableDropdown2(
+    options: List<String>,
+    selectedItem: String?,
+    onItemSelected: (String) -> Unit,
+    onClearSelection: () -> Unit = {}, // Added callback for clearing selection
+    placeholder: String,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf(selectedItem ?: "") }
+    val filteredOptions = options.filter { it.contains(searchQuery, ignoreCase = true) }
+
+    Box(modifier = modifier.fillMaxWidth()) {
+        Column {
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = {
+                    searchQuery = it
+                    expanded = it.isNotEmpty()
+                    if (it.isEmpty()) {
+                        onClearSelection() // Notify parent when input is cleared
+                    }
+                },
+                label = { Text(placeholder) },
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = null,
+                        modifier = Modifier.clickable { expanded = !expanded }
+                    )
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            if (expanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.onSurface)
+                        .heightIn(max = 200.dp)
+                ) {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        if (filteredOptions.isEmpty()) {
+                            item {
+                                Text(
+                                    "No options found",
+                                    modifier = Modifier.padding(16.dp),
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        } else {
+                            items(filteredOptions.size) { index ->
+                                val option = filteredOptions[index]
+                                Text(
+                                    text = option,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            searchQuery = option
+                                            onItemSelected(option)
+                                            expanded = false
+                                        }
+                                        .padding(16.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
+
+
 
 @Composable
 fun AddCustomerDialog2(
     onDismiss: () -> Unit,
     onAddCustomer: (Map<String, String>) -> Unit,
-    isUploading: MutableState<Boolean>
+    isUploading: MutableState<Boolean>,
 ) {
     var name by remember { mutableStateOf("") }
     var phoneNumber by remember { mutableStateOf("") }
@@ -325,6 +483,7 @@ fun AddCustomerDialog2(
                             // Add Button
                             Button(
                                 onClick = {
+
                                     // Create a map of customer details
                                     val customerDetails = mapOf(
                                         "Name" to name,
@@ -333,9 +492,12 @@ fun AddCustomerDialog2(
                                         "UID" to uid,
                                         "Reference Name" to referenceName,
                                         "Reference Mobile" to referenceMobile,
-                                        "Deposit" to deposit
+                                        "Deposit" to deposit,
+                                        "Credit" to "",
+                                        "Average Days" to "0",
                                     )
                                     onAddCustomer(customerDetails)
+
                                 },
                                 enabled = !isUploading.value,
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2f80eb))
@@ -389,9 +551,8 @@ suspend fun saveCustomerToFirestore2(
             .document("Issued Cylinders")
             .collection("Names")
             .document(customerName)
-            .set(mapOf("Details" to listOf<Map<String, Any>>()))
+            .set(mapOf("Details" to listOf<Map<String, String>>()))
 
-        // Create a collection with the current date-time in Transactions
         val transactionsRef = db.collection("Customers")
             .document("Transactions")
             .collection("Names")

@@ -1,6 +1,5 @@
 package org.example.iosfirebasehope.UI
 
-
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter.Companion.tint
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -46,6 +46,7 @@ import dev.gitlive.firebase.firestore.FirebaseFirestore
 
 import iosfirebasehope.composeapp.generated.resources.Res
 import iosfirebasehope.composeapp.generated.resources.at_plant
+import iosfirebasehope.composeapp.generated.resources.developed
 import iosfirebasehope.composeapp.generated.resources.empty
 import iosfirebasehope.composeapp.generated.resources.full
 import iosfirebasehope.composeapp.generated.resources.issued
@@ -57,7 +58,6 @@ import org.example.iosfirebasehope.navigation.components.HomeScreenComponent
 import org.example.iosfirebasehope.navigation.events.HomeScreenEvent
 import org.jetbrains.compose.resources.DrawableResource
 
-
 @Composable
 fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
 
@@ -68,12 +68,29 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
     var gasDocuments: List<DocumentSnapshot> by remember { mutableStateOf(listOf<DocumentSnapshot>()) }
     var gasList:List<String> by remember { mutableStateOf(listOf<String>()) }
     var isLoading by remember { mutableStateOf(true) }
+    var showAddCustomerDialog by remember { mutableStateOf(false) }
+    var isUploading = remember { mutableStateOf(false) }
+    var uploadMessage by remember { mutableStateOf<String?>(null) }
+    val coroutineScope = rememberCoroutineScope()
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    LaunchedEffect(drawerState.isClosed) {
+        if (drawerState.isClosed) {
+            keyboardController?.hide()
+        }
+    }
+
+
+
+
+
 
 
     LaunchedEffect(Unit) {
         cylinderDetailsList= allCylinderDetails(db)
         gasDocuments= gasDocuments(db)
-        cylinderList = SortCylindersData(cylinderDetailsList,gasDocuments)
+        cylinderList = SortCylindersData(cylinderDetailsList,gasDocuments,db)
         isLoading=false
 
     }
@@ -85,7 +102,29 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
             drawerState = drawerState,
             drawerContent = {
                 Column(modifier = Modifier.fillMaxSize().background(Color.White)) {
+
                     DrawerHeader(drawerState, scope)
+                    if (showAddCustomerDialog) {
+                        AddCustomerDialog2(
+                            onDismiss = { showAddCustomerDialog = false },
+                            onAddCustomer = { customerDetails ->
+                                isUploading.value = true
+                                coroutineScope.launch {
+                                    val success = saveCustomerToFirestore2(db, customerDetails)
+                                    if (success) {
+                                        uploadMessage = "Customer added successfully!"
+
+                                    } else {
+                                        uploadMessage = "Failed to add customer. Please try again."
+                                    }
+                                    isUploading.value = false
+                                    showAddCustomerDialog = false
+                                }
+                            },
+                            isUploading = isUploading,
+                        )
+                    }
+                    else{
                     DrawerItem(
                         icon = Icons.Default.Info,
                         text = "All Cylinder Details",
@@ -100,7 +139,7 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
                         icon = Icons.Default.Person,
                         text = "Customer Details",
                         onClick = {
-                            component.onEvent(HomeScreenEvent.OnAllCustomerClick(cylinderDetailsList))
+                            component.onEvent(HomeScreenEvent.OnAllCustomerClick(cylinderDetailsList,gasList))
                             scope.launch { drawerState.close() }
                         }
                     )
@@ -109,12 +148,40 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
                         icon = Icons.Default.AddCircle,
                         text = "Add Cylinder",
                         onClick = {
-                            component.onEvent(HomeScreenEvent.OnAddCylinderClick)
+                            component.onEvent(HomeScreenEvent.OnAddCylinderClick(cylinderDetailsList))
                             scope.launch { drawerState.close() }
                         }
                     )
                     Divider(color = Color.Gray, thickness = 1.dp)
-                }
+                    DrawerItem(
+                        icon = Icons.Default.Info,
+                        text = "Vendor Details",
+                        onClick = {
+                            component.onEvent(HomeScreenEvent.OnAllVendorClick(cylinderDetailsList,gasList))
+                            scope.launch { drawerState.close() }
+                        }
+                    )
+                    Divider(color = Color.Gray, thickness = 1.dp)
+
+                    DrawerItem(
+                        icon = Icons.Default.Info,
+                        text = "Add New Customer",
+                        onClick = {
+                            showAddCustomerDialog = true
+                        }
+                    )
+                    Divider(color = Color.Gray, thickness = 1.dp)
+
+                    Spacer(modifier = Modifier.weight(1f)) // Spacer to push content to the top
+                    Image(
+                        painter = painterResource(resource = Res.drawable.developed), // Replace with your image resource
+                        contentDescription = "Bottom Image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp)
+                            .size(120.dp)
+                    )
+                }}
             }
         ) {
             Scaffold(
@@ -133,7 +200,10 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
                             }
                         },
                         actions = {
-                            IconButton(onClick = { /* TODO: Handle notification icon click */ }) {
+                            IconButton(onClick = {
+                                val filteredCylinderDetailList= cylinderDetailsList.filter { it["Status"] == "Issued" }
+                                component.onEvent(HomeScreenEvent.OnNotificationClick(filteredCylinderDetailList))
+                            }) {
                                 Icon(
                                     imageVector = Icons.Default.Notifications,
                                     contentDescription = "Notifications"
@@ -157,7 +227,7 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
                             icon = { Icon(Icons.Default.LocationOn, contentDescription = "Refilling", tint = Color.White) },
                             label = { Text("Refilling") },
                             selected = false,
-                            onClick = { /* Handle Refilling click */ }
+                            onClick = { component.onEvent(HomeScreenEvent.OnRefillClick) }
                         )
                         BottomNavigationItem(
                             icon = { Icon(Icons.Default.List, contentDescription = "Repair", tint = Color.White) },
@@ -168,6 +238,7 @@ fun HomeScreenUI(component: HomeScreenComponent, db: FirebaseFirestore) {
                     }
                 }
             ) {
+
                 if (isLoading) {
                     Box(
                         modifier = Modifier.fillMaxSize(),
@@ -242,6 +313,8 @@ fun StatusRow(component: HomeScreenComponent, cylinderDetailsList: List<Map<Stri
         Triple("Issued", Color.White, Res.drawable.issued),
         Triple("Repair", Color.White, Res.drawable.repair),
         Triple("At Plant", Color.White, Res.drawable.at_plant)
+
+
     )
 
     LazyRow(
@@ -297,7 +370,20 @@ fun CylinderList(component: HomeScreenComponent, cylinders: List<Cylinder>, cyli
             .fillMaxSize()
             .padding(16.dp)
     ) {
-        items(cylinders) { cylinder ->
+        // Assuming your cylinders are in a list
+        val sortedCylinders = cylinders.sortedWith(compareBy { cylinder ->
+            when (cylinder.name) {
+                "Oxygen" -> 1
+                "LPG" -> 2
+                "Carbon dioxide" -> 3
+                "Ammonia" -> 4
+                "Nitrogen" -> 5
+                else -> 6 // For any cylinders that don't match these types
+            }
+        })
+
+// Now use the sorted list
+        items(sortedCylinders) { cylinder ->
             CylinderCard(cylinder, component, cylinderDetailsList)
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -322,10 +408,7 @@ fun getGasColor(gasName: String): Color {
 
 @Composable
 fun CylinderCard(cylinder: Cylinder, component: HomeScreenComponent, cylinderDetailsList: List<Map<String, String>>) {
-
-
     val gasSortedList: List<Map<String, String>> = cylinderDetailsList.filter { it["Gas Type"] == cylinder.name }
-
 
     Card(
         modifier = Modifier
@@ -353,11 +436,21 @@ fun CylinderCard(cylinder: Cylinder, component: HomeScreenComponent, cylinderDet
             Spacer(modifier = Modifier.width(16.dp))
             Column {
                 Text(text = cylinder.name, fontWeight = FontWeight.Bold)
-                Text(text = "Full: ${cylinder.full}")
-                Text(text = "Empty: ${cylinder.empty}")
-                Text(text = "Sold: ${cylinder.sold}")
-                Text(text = "Repair: ${cylinder.repair}")
-                Text(text = "At Plant: ${cylinder.atPlant}")
+                if (cylinder.name == "LPG") {
+                    // Display only Full and Empty for LPG
+                    Text(text = "Full: ${cylinder.full}")
+                    Text(text = "Empty: ${cylinder.empty}")
+                    Text(text = "Issued: --")
+                    Text(text = "Repair: --")
+                    Text(text = "At Plant: --")
+                } else {
+                    // Display all fields for non-LPG gases
+                    Text(text = "Full: ${cylinder.full}")
+                    Text(text = "Empty: ${cylinder.empty}")
+                    Text(text = "Issued: ${cylinder.issued}")
+                    Text(text = "Repair: ${cylinder.repair}")
+                    Text(text = "At Plant: ${cylinder.atPlant}")
+                }
             }
         }
     }
@@ -367,9 +460,8 @@ fun CylinderCard(cylinder: Cylinder, component: HomeScreenComponent, cylinderDet
 // Function to fetch cylinder data from Firestore
 
 
-fun SortCylindersData(cylinderDetailsList: List<Map<String, String>>,gasDocuments: List<DocumentSnapshot>): List<Cylinder> {
+suspend fun SortCylindersData(cylinderDetailsList: List<Map<String, String>>, gasDocuments: List<DocumentSnapshot>, db: FirebaseFirestore): List<Cylinder> {
     val cylindersList = mutableListOf<Cylinder>()
-
 
     // Parse the cylinder details into CylinderDetail objects
     val cylinderDetails = cylinderDetailsList.mapNotNull { map ->
@@ -387,19 +479,35 @@ fun SortCylindersData(cylinderDetailsList: List<Map<String, String>>,gasDocument
         val gasName = gasDocument.id
         var full = 0
         var empty = 0
-        var sold = 0
+        var issued = 0
         var repair = 0
         var atPlant = 0
 
-        // Count the status for this gas from the cylinderDetails array
-        cylinderDetails.forEach { cylinderDetail ->
-            if (cylinderDetail.gasName == gasName) {
-                when (cylinderDetail.status) {
-                    "Full" -> full++
-                    "Empty" -> empty++
-                    "Sold" -> sold++
-                    "Repair" -> repair++
-                    "At Plant" -> atPlant++
+        if (gasName == "LPG") {
+            // Fetch LPG document from Firestore
+            val lpgDocument = db.collection("Cylinders").document("LPG").get()
+
+            // Get LPGFull and LPGEmpty maps
+            val lpgFullMap = lpgDocument.get("LPGFull") as? Map<String, Int> ?: emptyMap()
+            val lpgEmptyMap = lpgDocument.get("LPGEmpty") as? Map<String, Int> ?: emptyMap()
+
+            // Sum quantities for FULL and EMPTY
+            full = lpgFullMap.values.sum()
+            empty = lpgEmptyMap.values.sum()
+
+        }
+
+        else {
+            // For non-LPG gases, count the status from cylinderDetails
+            cylinderDetails.forEach { cylinderDetail ->
+                if (cylinderDetail.gasName == gasName) {
+                    when (cylinderDetail.status) {
+                        "Full" -> full++
+                        "Empty" -> empty++
+                        "Issued" -> issued++
+                        "Repair" -> repair++
+                        "At Plant" -> atPlant++
+                    }
                 }
             }
         }
@@ -411,7 +519,7 @@ fun SortCylindersData(cylinderDetailsList: List<Map<String, String>>,gasDocument
                 symbol = getGasSymbol(gasName),
                 full = full,
                 empty = empty,
-                sold = sold,
+                issued = issued,
                 repair = repair,
                 atPlant = atPlant
             )
@@ -447,7 +555,7 @@ data class Cylinder(
     val symbol: String,
     val full: Int,
     val empty: Int,
-    val sold: Int,
+    val issued: Int,
     val repair: Int,
     val atPlant: Int
 )

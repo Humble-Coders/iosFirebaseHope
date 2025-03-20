@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -19,6 +20,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +44,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
     var selectedUnit by remember { mutableStateOf<String?>(null) }
     var customUnit by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
+    var price by remember { mutableStateOf("") } // New state for Price
 
     // State for the units dropdown
     var unitsDropdownExpanded by remember { mutableStateOf(false) }
@@ -53,7 +57,15 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
     var itemToEdit by remember { mutableStateOf<Map<String, String>?>(null) }
 
     // State for delete confirmation dialog
+
+
     var itemToDelete by remember { mutableStateOf<Map<String, String>?>(null) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
+    var enteredPin by remember { mutableStateOf("") }
+    var isVerifyingPin by remember { mutableStateOf(false) }
+    var showIncorrectPinDialog by remember { mutableStateOf(false) }
+
 
     // Fetch inventory items on launch
     LaunchedEffect(Unit) {
@@ -85,6 +97,135 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                     .fillMaxSize()
                     .padding(16.dp)
             ) {
+                if (showPinDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showPinDialog = false
+                            enteredPin = ""
+                        },
+                        title = { Text("Enter PIN to Delete", fontWeight = FontWeight.Bold) },
+                        text = {
+                            Column {
+                                OutlinedTextField(
+                                    value = enteredPin,
+                                    onValueChange = { enteredPin = it },
+                                    label = { Text("PIN") },
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    colors = TextFieldDefaults.outlinedTextFieldColors(
+                                        focusedBorderColor = Color(0xFF2f80eb),
+                                        focusedLabelColor = Color(0xFF2f80eb)
+                                    ),
+                                    enabled = !isVerifyingPin
+                                )
+                                if (isVerifyingPin) {
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp),
+                                        color = Color(0xFF2f80eb)
+                                    )
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    isVerifyingPin = true
+                                    coroutineScope.launch {
+                                        val passwordDoc = db.collection("Passwords")
+                                            .document("Password")
+                                            .get()
+
+                                        val storedPin = passwordDoc.get("Pin") as? String
+
+                                        if (enteredPin == storedPin) {
+                                            showPinDialog = false
+                                            showDeleteConfirmationDialog = true
+                                        } else {
+                                            showIncorrectPinDialog = true
+                                        }
+                                        enteredPin = ""
+                                        isVerifyingPin = false
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb)),
+                                enabled = !isVerifyingPin && enteredPin.isNotEmpty()
+                            ) {
+                                Text("Verify", color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showPinDialog = false
+                                    enteredPin = ""
+                                },
+                                enabled = !isVerifyingPin
+                            ) {
+                                Text("Cancel", color = Color(0xFF2f80eb))
+                            }
+                        }
+                    )
+                }
+
+                // Incorrect PIN Dialog
+                if (showIncorrectPinDialog) {
+                    AlertDialog(
+                        onDismissRequest = { showIncorrectPinDialog = false },
+                        title = { Text("Error", fontWeight = FontWeight.Bold, color = Color.Red) },
+                        text = { Text("Incorrect PIN") },
+                        confirmButton = {
+                            Button(
+                                onClick = { showIncorrectPinDialog = false },
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
+                            ) {
+                                Text("Close", color = Color.White)
+                            }
+                        }
+                    )
+                }
+
+                 //Delete Confirmation Dialog
+                if (showDeleteConfirmationDialog && itemToDelete != null) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            showDeleteConfirmationDialog = false
+                            itemToDelete = null
+                        },
+                        title = { Text("Delete Item") },
+                        text = { Text("Are you sure you want to delete this item?") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    coroutineScope.launch {
+                                        deleteItem(db, scaffoldState, itemToDelete!!, inventoryItems) { updatedItems ->
+                                            inventoryItems = updatedItems
+                                        }
+                                        showDeleteConfirmationDialog = false
+                                        itemToDelete = null
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
+                            ) {
+                                Text("Delete", color = Color.White)
+                            }
+                        },
+                        dismissButton = {
+                            Button(
+                                onClick = {
+                                    showDeleteConfirmationDialog = false
+                                    itemToDelete = null
+                                },
+                                colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray)
+                            ) {
+                                Text("Cancel", color = Color.Black)
+                            }
+                        }
+                    )
+                }
                 // Add Item Button
                 Button(
                     onClick = {
@@ -94,6 +235,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                         selectedUnit = null
                         customUnit = ""
                         description = ""
+                        price = "" // Reset the price field
                         itemToEdit = null
                         showDialog = true
                     },
@@ -113,14 +255,16 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                             onEditClick = {
                                 // Pre-fill fields when opening the dialog for editing
                                 itemToEdit = item
-                                itemName = item["name"] ?: ""
-                                quantity = item["quantity"] ?: ""
-                                selectedUnit = item["units"]
-                                description = item["description"] ?: ""
+                                itemName = item["Name"] ?: ""
+                                quantity = item["Quantity"] ?: ""
+                                selectedUnit = item["Units"]
+                                description = item["Description"] ?: ""
+                                price = item["Price"] ?: "" // Pre-fill the price field
                                 showDialog = true
                             },
                             onDeleteClick = {
                                 itemToDelete = item
+                                showPinDialog = true
                             }
                         )
                         Spacer(modifier = Modifier.height(8.dp))
@@ -150,7 +294,19 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                                     value = quantity,
                                     onValueChange = { quantity = it },
                                     label = { Text("Quantity") },
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Price
+                                TextField(
+                                    value = price,
+                                    onValueChange = { price = it },
+                                    label = { Text("Price") },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                                 )
 
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -191,7 +347,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                             Button(
                                 onClick = {
                                     // Validate inputs
-                                    if (itemName.isBlank() || quantity.isBlank() || selectedUnit == null) {
+                                    if (itemName.isBlank() || quantity.isBlank() || selectedUnit == null || price.isBlank()) {
                                         coroutineScope.launch {
                                             scaffoldState.snackbarHostState.showSnackbar(
                                                 "Please fill all required fields.",
@@ -202,7 +358,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                                     }
 
                                     // Check if the item name already exists (only for adding new items)
-                                    if (itemToEdit == null && inventoryItems.any { it["name"] == itemName }) {
+                                    if (itemToEdit == null && inventoryItems.any { it["Name"] == itemName }) {
                                         coroutineScope.launch {
                                             scaffoldState.snackbarHostState.showSnackbar(
                                                 "Item with this name already exists.",
@@ -220,10 +376,11 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
 
                                     // Create the item map
                                     val item = mapOf(
-                                        "name" to itemName,
-                                        "quantity" to quantity,
-                                        "units" to unitToSave!!,
-                                        "description" to description
+                                        "Name" to itemName,
+                                        "Quantity" to quantity,
+                                        "Units" to unitToSave!!,
+                                        "Description" to description,
+                                        "Price" to price // Add the price field
                                     )
 
                                     // Fetch the existing items, update the array, and save it back
@@ -242,7 +399,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                                             val updatedItems = if (itemToEdit == null) {
                                                 existingItems + item
                                             } else {
-                                                existingItems.map { if (it["name"] == itemToEdit!!["name"]) item else it }
+                                                existingItems.map { if (it["Name"] == itemToEdit!!["Name"]) item else it }
                                             }
 
                                             // Save the updated list back to Firestore
@@ -263,6 +420,7 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                                             selectedUnit = null
                                             customUnit = ""
                                             description = ""
+                                            price = "" // Reset the price field
                                             itemToEdit = null
                                         } catch (e: Exception) {
                                             scaffoldState.snackbarHostState.showSnackbar(
@@ -292,36 +450,36 @@ fun InventoryScreenUI(component: InventoryScreenComponent, db: FirebaseFirestore
                 }
 
                 // Delete Confirmation Dialog
-                if (itemToDelete != null) {
-                    AlertDialog(
-                        onDismissRequest = { itemToDelete = null },
-                        title = { Text("Delete Item") },
-                        text = { Text("Are you sure you want to delete this item?") },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        deleteItem(db, scaffoldState, itemToDelete!!, inventoryItems) { updatedItems ->
-                                            inventoryItems = updatedItems
-                                        }
-                                        itemToDelete = null
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
-                            ) {
-                                Text("Delete", color = Color.White)
-                            }
-                        },
-                        dismissButton = {
-                            Button(
-                                onClick = { itemToDelete = null },
-                                colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray)
-                            ) {
-                                Text("Cancel", color = Color.Black)
-                            }
-                        }
-                    )
-                }
+//                if (itemToDelete != null) {
+//                    AlertDialog(
+//                        onDismissRequest = { itemToDelete = null },
+//                        title = { Text("Delete Item") },
+//                        text = { Text("Are you sure you want to delete this item?") },
+//                        confirmButton = {
+//                            Button(
+//                                onClick = {
+//                                    coroutineScope.launch {
+//                                        deleteItem(db, scaffoldState, itemToDelete!!, inventoryItems) { updatedItems ->
+//                                            inventoryItems = updatedItems
+//                                        }
+//                                        itemToDelete = null
+//                                    }
+//                                },
+//                                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
+//                            ) {
+//                                Text("Delete", color = Color.White)
+//                            }
+//                        },
+//                        dismissButton = {
+//                            Button(
+//                                onClick = { itemToDelete = null },
+//                                colors = ButtonDefaults.buttonColors(backgroundColor = Color.LightGray)
+//                            ) {
+//                                Text("Cancel", color = Color.Black)
+//                            }
+//                        }
+//                    )
+//                }
             }
         }
     )
@@ -361,18 +519,24 @@ fun InventoryItemCard(
             // Item Details
             Column {
                 Text(
-                    text = item["name"] ?: "",
+                    text = item["Name"] ?: "",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Quantity: ${item["quantity"]} ${item["units"]}",
+                    text = "Quantity: ${item["Quantity"]} ${item["Units"]}",
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Description: ${item["description"]}",
+                    text = "Price: ${item["Price"]}",
+                    fontSize = 14.sp,
+                    color = Color.Gray
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Description: ${item["Description"]}",
                     fontSize = 14.sp,
                     color = Color.Gray
                 )
@@ -380,7 +544,9 @@ fun InventoryItemCard(
 
             // Delete Button (Bottom-Right)
             IconButton(
-                onClick = onDeleteClick,
+                onClick = {
+                    onDeleteClick()
+                },
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
                     .size(36.dp)
@@ -489,7 +655,7 @@ private suspend fun deleteItem(
 ) {
     try {
         val documentRef = db.collection("Inventory").document("Items")
-        val updatedItems = currentItems.filterNot { it["name"] == item["name"] }
+        val updatedItems = currentItems.filterNot { it["Name"] == item["Name"] }
 
         // Save the updated list back to Firestore
         documentRef.set(mapOf("items" to updatedItems))

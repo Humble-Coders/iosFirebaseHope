@@ -8,12 +8,18 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import dev.gitlive.firebase.firestore.FirebaseFirestore
 import iosfirebasehope.composeapp.generated.resources.Res
 import iosfirebasehope.composeapp.generated.resources.baseline_add_box_24
@@ -21,13 +27,23 @@ import iosfirebasehope.composeapp.generated.resources.baseline_auto_mode_24
 import iosfirebasehope.composeapp.generated.resources.baseline_autorenew_24
 import org.example.iosfirebasehope.navigation.components.BillScreenComponent
 import org.example.iosfirebasehope.navigation.events.BillScreenEvent
+import org.example.iosfirebasehope.navigation.events.NewOrChooseCustomerScreenEvent
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 
 @Composable
-fun BillScreenUI(component: BillScreenComponent,
-                 db: FirebaseFirestore) {
+fun BillScreenUI(component: BillScreenComponent, db: FirebaseFirestore) {
+    var showAddCustomerDialog by remember { mutableStateOf(false) }
+    var showChooseCustomerDialog by remember { mutableStateOf(false) } // State for choose customer dialog (Return a Cylinder)
+    var showExchangeCustomerDialog by remember { mutableStateOf(false) } // State for choose customer dialog (Exchange Cylinder)
+    var selectedCustomer by remember { mutableStateOf<String?>(null) } // State for selected customer
+    var customers by remember { mutableStateOf<List<String>>(listOf("Customer 1", "Customer 2", "Customer 3")) }
+
+    LaunchedEffect(Unit) {
+        customers = fetchCustomers(db)
+    }
+
     Scaffold(
         topBar = {
             Surface(
@@ -85,7 +101,7 @@ fun BillScreenUI(component: BillScreenComponent,
             ActionCard(
                 title = "Exchange Cylinder",
                 iconResId = Res.drawable.baseline_auto_mode_24, // Replace with your drawable resource
-                onClick = { /* Handle click */ }
+                onClick = { showExchangeCustomerDialog = true } // Show dialog for Exchange Cylinder
             )
 
             Spacer(modifier = Modifier.height(16.dp)) // Add space between cards
@@ -94,8 +110,124 @@ fun BillScreenUI(component: BillScreenComponent,
             ActionCard(
                 title = "Return a Cylinder",
                 iconResId = Res.drawable.baseline_autorenew_24, // Replace with your drawable resource
-                onClick = { /* Handle click */ }
+                onClick = { showChooseCustomerDialog = true } // Show dialog for Return a Cylinder
             )
+        }
+
+        // Dialog for Return a Cylinder
+        if (showChooseCustomerDialog) {
+            Dialog(onDismissRequest = { showChooseCustomerDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Select Customer",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        SearchableDropdown2(
+                            options = customers,
+                            selectedItem = selectedCustomer,
+                            onItemSelected = {
+                                selectedCustomer = it
+                            },
+                            onClearSelection = {
+                                selectedCustomer = null // Reset when input is cleared
+                            },
+                            placeholder = "Search customer...",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { showChooseCustomerDialog = false }) {
+                                Text("Cancel", color = MaterialTheme.colorScheme.primary)
+                            }
+                            TextButton(
+                                onClick = {
+                                    component.onEvent(BillScreenEvent.OnChooseCustomerClick(selectedCustomer!!))
+                                },
+                                enabled = !selectedCustomer.isNullOrBlank() // Disable button if input is cleared
+                            ) {
+                                Text(
+                                    "Choose",
+                                    color = if (!selectedCustomer.isNullOrBlank())
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Dialog for Exchange Cylinder (same as Return a Cylinder)
+        if (showExchangeCustomerDialog) {
+            Dialog(onDismissRequest = { showExchangeCustomerDialog = false }) {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.surface
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            "Select Customer",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            modifier = Modifier.padding(bottom = 16.dp)
+                        )
+
+                        SearchableDropdown2(
+                            options = customers,
+                            selectedItem = selectedCustomer,
+                            onItemSelected = {
+                                selectedCustomer = it
+                            },
+                            onClearSelection = {
+                                selectedCustomer = null // Reset when input is cleared
+                            },
+                            placeholder = "Search customer...",
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = { showExchangeCustomerDialog = false }) {
+                                Text("Cancel", color = MaterialTheme.colorScheme.primary)
+                            }
+                            TextButton(
+                                onClick = {
+                                    component.onEvent(BillScreenEvent.OnExchangeCylinderClick(selectedCustomer!!))
+                                },
+                                enabled = !selectedCustomer.isNullOrBlank() // Disable button if input is cleared
+                            ) {
+                                Text(
+                                    "Choose",
+                                    color = if (!selectedCustomer.isNullOrBlank())
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        Color.Gray
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

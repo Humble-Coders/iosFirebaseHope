@@ -23,6 +23,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.text.input.ImeAction
+import dev.gitlive.firebase.firestore.FirebaseFirestore
 import org.example.iosfirebasehope.navigation.components.AllCylinderDetailsScreenComponent
 import org.example.iosfirebasehope.navigation.components.CylinderStatusScreenComponent
 import org.example.iosfirebasehope.navigation.events.AllCylinderDetailsScreenEvent
@@ -32,13 +33,41 @@ import org.example.iosfirebasehope.navigation.events.GasVolumeScreenEvent
 @Composable
 fun AllCylinderDetailsScreenUI(
     component: AllCylinderDetailsScreenComponent,
-    cylinderDetailsList: List<Map<String, String>>
+    db: FirebaseFirestore // Pass Firestore instance
 ) {
     var searchQuery by remember { mutableStateOf("") }
-    var filteredCylinders by remember { mutableStateOf(cylinderDetailsList) }
-    var expanded by remember { mutableStateOf(false) }
+    var filteredCylinders by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) } // Loading state
+    var errorMessage by remember { mutableStateOf<String?>(null) } // Error message state
+    val cylinderDetailsList = remember { mutableStateListOf<Map<String, String>>() } // State for fetched data
 
-    // Filtered cylinders based on the search query and selected gases
+    // Fetch data from Firestore
+    LaunchedEffect(Unit) {
+        try {
+            // Fetch the Cylinders document
+            val document = db.collection("Cylinders")
+                .document("Cylinders")
+                .get()
+
+            if (document.exists) {
+                // Fetch the CylinderDetails array
+                val fetchedCylinderDetails = document.get("CylinderDetails") as? List<Map<String, String>>
+                if (fetchedCylinderDetails != null) {
+                    cylinderDetailsList.clear()
+                    cylinderDetailsList.addAll(fetchedCylinderDetails)
+                    filteredCylinders = fetchedCylinderDetails // Initialize filtered list
+                }
+            } else {
+                errorMessage = "No data found in Firestore."
+            }
+        } catch (e: Exception) {
+            errorMessage = "Failed to fetch data: ${e.message}"
+        } finally {
+            isLoading = false // Stop loading
+        }
+    }
+
+    // Filtered cylinders based on the search query
     LaunchedEffect(searchQuery) {
         filteredCylinders = if (searchQuery.isEmpty()) {
             cylinderDetailsList
@@ -64,7 +93,12 @@ fun AllCylinderDetailsScreenUI(
             )
         }
     ) { innerPadding ->
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             // Search bar
             Row(
                 modifier = Modifier
@@ -104,19 +138,41 @@ fun AllCylinderDetailsScreenUI(
                     ),
                     keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done)
                 )
-
-
-
             }
 
-            // Display filtered list of cylinders
-            CylinderList2( cylinderDetailsList = filteredCylinders, modifier = Modifier.padding(innerPadding), component = component)
+            // Show loading indicator while data is being fetched
+            if (isLoading) {
+                CircularProgressIndicator(
+                    modifier = Modifier
+                        .padding(16.dp)
+                        .size(48.dp),
+                    color = Color(0xFF2f80eb)
+                )
+            } else if (errorMessage != null) {
+                // Show error message if there's an error
+                Text(
+                    text = errorMessage!!,
+                    color = Color.Red,
+                    modifier = Modifier.padding(16.dp)
+                )
+            } else {
+                // Display filtered list of cylinders
+                CylinderList2(
+                    cylinderDetailsList = filteredCylinders,
+                    modifier = Modifier.padding(innerPadding),
+                    component = component
+                )
+            }
         }
     }
 }
 
 @Composable
-fun CylinderList2( cylinderDetailsList: List<Map<String, String>>, modifier: Modifier = Modifier, component: AllCylinderDetailsScreenComponent) {
+fun CylinderList2(
+    cylinderDetailsList: List<Map<String, String>>,
+    modifier: Modifier = Modifier,
+    component: AllCylinderDetailsScreenComponent
+) {
     LazyColumn(
         modifier = modifier
             .fillMaxSize()
@@ -130,7 +186,10 @@ fun CylinderList2( cylinderDetailsList: List<Map<String, String>>, modifier: Mod
 }
 
 @Composable
-fun CylinderDetailsCard3(cylinderDetailsList: List<Map<String, String>>, component: AllCylinderDetailsScreenComponent) {
+fun CylinderDetailsCard3(
+    cylinderDetailsList: List<Map<String, String>>,
+    component: AllCylinderDetailsScreenComponent
+) {
     val currentCylinderDetails = cylinderDetailsList.firstOrNull() ?: return
 
     Card(

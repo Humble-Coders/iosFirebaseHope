@@ -18,7 +18,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -27,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -37,27 +41,34 @@ import org.example.iosfirebasehope.navigation.events.CurrentCylinderDetailsScree
 
 @Composable
 fun CurrentCylinderDetailsUI(
-    currentCylinderDetails: Map<String, String>, // Generalized type to handle multiple field types
+    initialCylinderDetails: Map<String, String>, // Initial data passed as parameter
     component: CurrentCylinderDetailsComponent,
-    db: FirebaseFirestore // FirebaseFirestore instance for data fetching
+    db: FirebaseFirestore
 ) {
-    var showEditDialog by remember { mutableStateOf(false) } // State to control the edit dialog
+    var currentCylinderDetails by remember { mutableStateOf(initialCylinderDetails.toMutableMap()) }
+    var showEditDialog by remember { mutableStateOf(false) }
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Mutable state variables for Batch, Status, and Remarks
+    var batchNumber by remember { mutableStateOf(currentCylinderDetails["Batch Number"] ?: "") }
+    var status by remember { mutableStateOf(currentCylinderDetails["Status"] ?: "") }
+    var remarks by remember { mutableStateOf(currentCylinderDetails["Remarks"] ?: "") }
+
     var price by remember { mutableStateOf("") }
-    var isSearchActive by remember { mutableStateOf(false) } // State to toggle between text and search bar
+    var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
 
-    // State for Currently Issued To and Previous Customers
     var currentlyIssuedTo by remember { mutableStateOf<Map<String, String>?>(null) }
     var previousCustomers by remember { mutableStateOf<List<Map<String, String>>>(emptyList()) }
+    var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
+    var showPinDialog by remember { mutableStateOf(false) }
+    var enteredPin by remember { mutableStateOf("") }
+    var showStatusErrorDialog by remember { mutableStateOf(false) }
 
-    // Fetch Currently Issued To and Previous Customers on launch
     LaunchedEffect(currentCylinderDetails["Serial Number"]) {
         val serialNumber = currentCylinderDetails["Serial Number"] ?: return@LaunchedEffect
 
-        // Fetch Currently Issued To
         val currentlyIssuedToDoc = db.collection("Cylinders")
             .document("Customers")
             .collection(serialNumber)
@@ -68,7 +79,6 @@ fun CurrentCylinderDetailsUI(
             currentlyIssuedTo = currentlyIssuedToDoc.data() as? Map<String, String>
         }
 
-        // Fetch Previous Customers
         val previousCustomersDoc = db.collection("Cylinders")
             .document("Customers")
             .collection(serialNumber)
@@ -81,7 +91,6 @@ fun CurrentCylinderDetailsUI(
         }
     }
 
-    // Filter customers based on search query
     val filteredCustomers by derivedStateOf {
         if (searchQuery.isEmpty()) {
             previousCustomers
@@ -107,13 +116,16 @@ fun CurrentCylinderDetailsUI(
                 val fetchedVolumesAndSP = docSnapshot.get("VolumesAndSP") as? Map<String, String>
                 if (fetchedVolumesAndSP != null) {
                     val volumeType = currentCylinderDetails["Volume Type"] ?: ""
-                    price = fetchedVolumesAndSP[volumeType] ?: "Not Found"
+                    price = fetchedVolumesAndSP[volumeType.replace(".", ",")] ?: "Not Found"
                 }
             }
         } catch (e: Exception) {
             e.printStackTrace()
         }
     }
+
+
+
 
     Scaffold(
         topBar = {
@@ -132,16 +144,14 @@ fun CurrentCylinderDetailsUI(
             )
         },
         snackbarHost = {
-            // Snackbar host to display messages
             SnackbarHost(hostState = snackbarHostState)
         }
     ) { innerPadding ->
         Column(modifier = Modifier.padding(innerPadding)) {
-            // Box displaying current cylinder details
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 8.dp) // Reduced bottom padding
+                    .padding(bottom = 8.dp)
                     .background(Color(0xFFF3F4F6))
             ) {
                 Column {
@@ -149,83 +159,124 @@ fun CurrentCylinderDetailsUI(
                     val gasSymbol = getGasSymbol(gasType)
                     val volumeType = currentCylinderDetails["Volume Type"] ?: ""
 
-                    // Row with gas symbol and serial number at the top
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp), // Reduced padding
-                        horizontalArrangement = Arrangement.Start,
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Gas symbol
-                        Box(
-                            contentAlignment = Alignment.Center,
-                            modifier = Modifier
-                                .size(50.dp) // Reduced size of gas symbol
-                                .background(getGasColor(gasType), RoundedCornerShape(8.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Text(
-                                text = gasSymbol,
-                                color = Color.White,
-                                fontSize = 20.sp, // Slightly smaller font size
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(50.dp)
+                                    .background(getGasColor(gasType), RoundedCornerShape(8.dp))
+                            ) {
+                                Text(
+                                    text = gasSymbol,
+                                    color = Color.White,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column {
+                                Text(
+                                    text = "Serial No - ${currentCylinderDetails["Serial Number"] ?: ""}",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = gasType,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                                Text(
+                                    text = volumeType.replace(",", "."),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 16.sp
+                                )
+                            }
                         }
 
-                        Spacer(modifier = Modifier.width(12.dp)) // Reduced space between items
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            IconButton(
+                                onClick = { showEditDialog = true }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = "Edit",
+                                    tint = Color(0xFF2f80eb)
+                                )
+                            }
 
-                        Column {
-                            // Displaying Serial Number, Gas Type, and Volume Type
-                            Text(
-                                text = "Serial No - ${currentCylinderDetails["Serial Number"] ?: ""}",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp // Slightly smaller font size
-                            )
-                            Text(
-                                text = gasType,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp // Slightly smaller font size
-                            )
-                            Text(
-                                text = volumeType.replace(",", "."),
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp // Slightly smaller font size
-                            )
+                            IconButton(
+                                onClick = {
+                                    if (status == "Full" || status == "Empty") {
+                                        showPinDialog = true
+                                    } else {
+                                        showStatusErrorDialog = true
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete",
+                                    tint = if (status == "Full" || status == "Empty") Color(0xFFDC3545) else Color.Gray
+                                )
+                            }
                         }
                     }
 
-                    // Divider under the row
+
                     Divider(color = Color.Black, thickness = 1.dp)
 
-                    // Remaining details (like Batch Number, Status, Remarks, etc.)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp) // Reduced padding
+                            .padding(8.dp)
                     ) {
-                        // First column: Fixed fields (Batch Number, Status, Remarks)
-                        Column(modifier = Modifier.weight(1.2f)) { // Adjust weight to reduce spacing
-                            listOf("Batch Number", "Status").forEach { key ->
-                                val value = currentCylinderDetails[key]
-                                val displayName =
-                                    keyDisplayNames[key] ?: key // Use the display name from the map
-                                if (!value.isNullOrEmpty()) {
-                                    Row(modifier = Modifier.padding(vertical = 2.dp)) { // Reduced vertical padding
-                                        Text(
-                                            text = "$displayName:", // Display the mapped name
-                                            modifier = Modifier.weight(1f), // Adjust weight to shrink the gap
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp // Slightly smaller font size
-                                        )
-                                        Text(
-                                            text = value,
-                                            modifier = Modifier.weight(1f), // Equal weight for both columns
-                                            fontSize = 14.sp // Slightly smaller font size
-                                        )
-                                    }
-                                }
+                        Column(modifier = Modifier.weight(1.2f)) {
+                            // Display Batch Number
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text(
+                                    text = "Batch:",
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = batchNumber,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 14.sp
+                                )
                             }
 
+                            // Display Status
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text(
+                                    text = "Status:",
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = status,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 14.sp
+                                )
+                            }
+
+                            // Display Price
                             Row(modifier = Modifier.padding(vertical = 2.dp)) {
                                 Text(
                                     text = "Price:",
@@ -241,42 +292,245 @@ fun CurrentCylinderDetailsUI(
                             }
                         }
 
-                        // Second column: Dynamic fields (any other fields not in the first column)
                         Column(modifier = Modifier.weight(1f)) {
-                            listOf("Remarks").forEach { key ->
-                                val value = currentCylinderDetails[key]
-                                val displayName = keyDisplayNames[key] ?: key // Use the display name from the map
-                                if (!value.isNullOrEmpty()) {
-                                    Row(modifier = Modifier.padding(vertical = 2.dp)) { // Reduced vertical padding
-                                        Text(
-                                            text = "$displayName:", // Display the mapped name
-                                            modifier = Modifier.weight(1f), // Adjust weight to shrink the gap
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp // Slightly smaller font size
-                                        )
-                                        Text(
-                                            text = value,
-                                            modifier = Modifier.weight(1f), // Equal weight for both columns
-                                            fontSize = 14.sp // Slightly smaller font size
-                                        )
-                                    }
-                                }
+                            // Display Remarks
+                            Row(modifier = Modifier.padding(vertical = 2.dp)) {
+                                Text(
+                                    text = "Remarks:",
+                                    modifier = Modifier.weight(1f),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp
+                                )
+                                Text(
+                                    text = remarks,
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 14.sp
+                                )
                             }
 
-                            Button(
-                                onClick = { showEditDialog = true },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 8.dp, bottom = 16.dp) // Add some spacing
-                                    .height(36.dp), // Small button height
-                                colors = ButtonDefaults.buttonColors(
-                                    backgroundColor = Color(0xFF2f80eb) // Blue color
+//                            Button(
+//                                onClick = { showEditDialog = true },
+//                                modifier = Modifier
+//                                    .fillMaxWidth()
+//                                    .padding(top = 8.dp, bottom = 16.dp)
+//                                    .height(36.dp),
+//                                colors = ButtonDefaults.buttonColors(
+//                                    backgroundColor = Color(0xFF2f80eb)
+//                                )
+//                            ) {
+//                                Text(
+//                                    text = "Edit",
+//                                    color = Color.White,
+//                                    fontSize = 14.sp
+//                                )
+//                            }
+
+                            // Add these colors at the top of your file
+                            val BlueColor = Color(0xFF2f80eb)
+                            val RedColor = Color(0xFFDC3545)
+
+//                            Button(
+//                                onClick = { showPinDialog = true },
+//                                modifier = Modifier
+//                                    .fillMaxWidth()
+//                                    .padding(top = 8.dp),
+//                                colors = ButtonDefaults.buttonColors(
+//                                    backgroundColor = RedColor
+//                                )
+//                            ) {
+//                                Text("Delete Cylinder", color = Color.White)
+//                            }
+                            var showSuccessDialog by remember { mutableStateOf(false) }
+                            var showErrorDialog by remember { mutableStateOf(false) }
+                            var showIncorrectPinDialog by remember { mutableStateOf(false) }
+
+                            // Add these state variables
+                            var isVerifyingPin by remember { mutableStateOf(false) }
+                            var isDeletingCylinder by remember { mutableStateOf(false) }
+
+                            if (showPinDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showPinDialog = false },
+                                    title = { Text("Enter PIN to Delete", fontWeight = FontWeight.Bold) },
+                                    text = {
+                                        Column {
+                                            OutlinedTextField(
+                                                value = enteredPin,
+                                                onValueChange = { enteredPin = it },
+                                                label = { Text("PIN") },
+                                                keyboardOptions = KeyboardOptions(
+                                                    keyboardType = KeyboardType.Number,
+                                                    imeAction = ImeAction.Done
+                                                ),
+                                                colors = TextFieldDefaults.outlinedTextFieldColors(
+                                                    focusedBorderColor = BlueColor,
+                                                    focusedLabelColor = BlueColor
+                                                ),
+                                                enabled = !isVerifyingPin
+                                            )
+                                            if (isVerifyingPin) {
+                                                LinearProgressIndicator(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp),
+                                                    color = BlueColor
+                                                )
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                isVerifyingPin = true
+                                                coroutineScope.launch {
+                                                    val passwordDoc = db.collection("Passwords")
+                                                        .document("Password")
+                                                        .get()
+
+                                                    val storedPin = passwordDoc.get("Pin") as? String
+
+                                                    if (enteredPin == storedPin) {
+                                                        showPinDialog = false
+                                                        showDeleteConfirmationDialog = true
+                                                    } else {
+                                                        showIncorrectPinDialog = true
+                                                    }
+                                                    enteredPin = ""
+                                                    isVerifyingPin = false
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = BlueColor),
+                                            enabled = !isVerifyingPin && enteredPin.isNotEmpty()
+                                        ) {
+                                            Text("Verify", color = Color.White)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(
+                                            onClick = { showPinDialog = false },
+                                            enabled = !isVerifyingPin
+                                        ) {
+                                            Text("Cancel", color = BlueColor)
+                                        }
+                                    }
                                 )
-                            ) {
-                                Text(
-                                    text = "Edit",
-                                    color = Color.White,
-                                    fontSize = 14.sp
+                            }
+
+                            if (showStatusErrorDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showStatusErrorDialog = false },
+                                    title = { Text("Cannot Delete", fontWeight = FontWeight.Bold, color = Color(0xFFDC3545)) },
+                                    text = { Text("Cylinder can only be deleted when its status is either Full or Empty.") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = { showStatusErrorDialog = false },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
+                                        ) {
+                                            Text("Close", color = Color.White)
+                                        }
+                                    }
+                                )
+                            }
+
+                            if (showDeleteConfirmationDialog) {
+                                AlertDialog(
+                                    onDismissRequest = { showDeleteConfirmationDialog = false },
+                                    title = { Text("Confirm Deletion", fontWeight = FontWeight.Bold) },
+                                    text = {
+                                        Column {
+                                            Text("Are you sure you want to delete this cylinder?")
+                                            if (isDeletingCylinder) {
+                                                LinearProgressIndicator(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(top = 8.dp),
+                                                    color = RedColor
+                                                )
+                                            }
+                                        }
+                                    },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                isDeletingCylinder = true
+                                                coroutineScope.launch {
+                                                    val success = deleteCylinder(
+                                                        db,
+                                                        currentCylinderDetails["Serial Number"] ?: ""
+                                                    )
+                                                    if (success) {
+                                                        showSuccessDialog = true
+                                                    } else {
+                                                        showErrorDialog = true
+                                                    }
+                                                    showDeleteConfirmationDialog = false
+                                                    isDeletingCylinder = false
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = RedColor),
+                                            enabled = !isDeletingCylinder
+                                        ) {
+                                            Text("Delete", color = Color.White)
+                                        }
+                                    },
+                                    dismissButton = {
+                                        TextButton(
+                                            onClick = { showDeleteConfirmationDialog = false },
+                                            enabled = !isDeletingCylinder
+                                        ) {
+                                            Text("Cancel", color = BlueColor)
+                                        }
+                                    }
+                                )
+                            }
+
+                            if (showSuccessDialog) {
+                                AlertDialog(
+                                    onDismissRequest = {},
+                                    title = { Text("Success", fontWeight = FontWeight.Bold, color = Color.Green) },
+                                    text = { Text("Cylinder deleted successfully") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = {
+                                                component.onEvent(CurrentCylinderDetailsScreenEvent.OnGoToHomeClick)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = BlueColor)
+                                        ) {
+                                            Text("Back to Home", color = Color.White)
+                                        }
+                                    }
+                                )
+                            }
+
+                            if (showErrorDialog) {
+                                AlertDialog(
+                                    onDismissRequest = {},
+                                    title = { Text("Error", fontWeight = FontWeight.Bold, color = RedColor) },
+                                    text = { Text("Failed to delete cylinder") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = { showErrorDialog = false },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = BlueColor)
+                                        ) {
+                                            Text("Close", color = Color.White)
+                                        }
+                                    }
+                                )
+                            }
+
+                            if (showIncorrectPinDialog) {
+                                AlertDialog(
+                                    onDismissRequest = {},
+                                    title = { Text("Error", fontWeight = FontWeight.Bold, color = RedColor) },
+                                    text = { Text("Incorrect PIN") },
+                                    confirmButton = {
+                                        Button(
+                                            onClick = { showIncorrectPinDialog = false },
+                                            colors = ButtonDefaults.buttonColors(backgroundColor = BlueColor)
+                                        ) {
+                                            Text("Close", color = Color.White)
+                                        }
+                                    }
                                 )
                             }
 
@@ -291,15 +545,20 @@ fun CurrentCylinderDetailsUI(
                                                 currentCylinderDetails["Serial Number"] ?: "",
                                                 updatedDetails
                                             )
-                                            showEditDialog = false
-
                                             if (success) {
-                                                // Show success Snackbar
+                                                // Update the mutable state variables
+                                                batchNumber = updatedDetails["Batch Number"] ?: ""
+                                                status = updatedDetails["Status"] ?: ""
+                                                remarks = updatedDetails["Remarks"] ?: ""
+
+                                                // Update the currentCylinderDetails map
+                                                currentCylinderDetails.putAll(updatedDetails)
+
                                                 snackbarHostState.showSnackbar("Cylinder details updated successfully!")
                                             } else {
-                                                // Show failure Snackbar
                                                 snackbarHostState.showSnackbar("Failed to update cylinder details.")
                                             }
+                                            showEditDialog = false
                                         }
                                     }
                                 )
@@ -311,7 +570,6 @@ fun CurrentCylinderDetailsUI(
 
             GlowingIconCard(currentlyIssuedTo = currentlyIssuedTo, currentCylinderDetails)
 
-            // Previous Customers Card (always visible)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -320,7 +578,6 @@ fun CurrentCylinderDetailsUI(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
-                    // Header with "Previous Customers" and Search Icon
                     SearchHeader(
                         isSearchActive = isSearchActive,
                         searchQuery = searchQuery,
@@ -328,14 +585,12 @@ fun CurrentCylinderDetailsUI(
                         onSearchActiveChange = { isSearchActive = it }
                     )
 
-                    // LazyColumn for previous customers
                     LazyColumn {
                         itemsIndexed(filteredCustomers) { index, customer ->
                             CustomerItem(index, customer)
                         }
                     }
 
-                    // Show "No customers found" if the filtered list is empty
                     if (filteredCustomers.isEmpty()) {
                         Text(
                             text = "No customers found",
@@ -350,6 +605,8 @@ fun CurrentCylinderDetailsUI(
         }
     }
 }
+
+
 
 @Composable
 private fun SearchHeader(
@@ -468,7 +725,15 @@ fun GlowingIconCard(currentlyIssuedTo: Map<String, String>?, currentCylinderDeta
                 modifier = Modifier.padding(bottom = 4.dp)
             )
 
-            if (currentlyIssuedTo != null) {
+            if (currentlyIssuedTo != null && currentlyIssuedTo["name"].isNullOrEmpty()) {
+                // Display "Not Issued Currently" if the name is empty
+                Text(
+                    text = "Not Issued Currently",
+                    fontSize = 14.sp,
+                    color = Color.Gray,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            } else if (currentlyIssuedTo != null) {
                 Column {
                     val labelWidth = 120.dp // Reduced width for the labels
 
@@ -522,7 +787,7 @@ fun GlowingIconCard(currentlyIssuedTo: Map<String, String>?, currentCylinderDeta
                             )
                         }
                         Text(
-                            text = currentCylinderDetails["Return Date"] ?: "Not Available",
+                            text = currentCylinderDetails["Notifications Date"] ?: "Not Available",
                             fontSize = 14.sp,
                             color = Color.Black
                         )
@@ -541,7 +806,7 @@ fun GlowingIconCard(currentlyIssuedTo: Map<String, String>?, currentCylinderDeta
                             )
                         }
                         Text(
-                            text = "Rs. ${currentlyIssuedTo["rate"] ?: ""}",
+                            text = "Rs. ${currentlyIssuedTo["price"] ?: ""}",
                             fontSize = 14.sp,
                             color = Color.Black
                         )
@@ -550,7 +815,7 @@ fun GlowingIconCard(currentlyIssuedTo: Map<String, String>?, currentCylinderDeta
             } else {
                 // Fallback message if no details are available
                 Text(
-                    text = "No data available",
+                    text = "Not Issued Currently",
                     fontSize = 14.sp,
                     color = Color.Gray,
                     modifier = Modifier.padding(top = 4.dp)
@@ -559,7 +824,6 @@ fun GlowingIconCard(currentlyIssuedTo: Map<String, String>?, currentCylinderDeta
         }
     }
 }
-
 // Extracted CustomerItem composable
 @Composable
 private fun CustomerItem(index: Int, customer: Map<String, String>) {
@@ -596,7 +860,7 @@ private fun CustomerItem(index: Int, customer: Map<String, String>) {
                 }
                 Column(modifier = Modifier.weight(1f)) {
                     Text(customer["date"] ?: "", fontSize = 14.sp, color = Color.Gray)
-                    Text("Rs. ${customer["rate"] ?: ""}", fontSize = 14.sp, color = Color.Gray)
+                    Text("Rs. ${customer["price"] ?: ""}", fontSize = 14.sp, color = Color.Gray)
                 }
             }
         }
@@ -612,10 +876,10 @@ fun EditCylinderDetailsDialog(
     var batchNumber by remember { mutableStateOf(currentDetails["Batch Number"] ?: "") }
     var remarks by remember { mutableStateOf(currentDetails["Remarks"] ?: "") }
     var status by remember { mutableStateOf(currentDetails["Status"] ?: "") }
-
+    var isEnabled by remember { mutableStateOf(true) }
     // Dropdown state
     var isStatusDropdownExpanded by remember { mutableStateOf(false) }
-    val statusOptions = listOf("Full", "Empty", "Repair", "At Plant", "Issued")
+    val statusOptions = listOf("Full", "Empty", "Repair")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -630,7 +894,8 @@ fun EditCylinderDetailsDialog(
                     value = batchNumber,
                     onValueChange = { batchNumber = it },
                     label = { Text("Batch Number") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
 
                 // Remarks Field
@@ -642,27 +907,34 @@ fun EditCylinderDetailsDialog(
                 )
 
                 // Status Dropdown
-                Box(modifier = Modifier.fillMaxWidth().clickable { isStatusDropdownExpanded = true }) {
-                    // Wrap the OutlinedTextField in a Box and apply clickable to the Box
-                    Box(
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if(status=="Issued" || status=="At Plant"){
+                        isEnabled=false
+                    }
+                    OutlinedTextField(
+                        enabled = isEnabled,
+                        value = status,
+                        onValueChange = {}, // Disable manual input
+                        label = { Text("Status") },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { isStatusDropdownExpanded = true } // Open dropdown on click
-                    ) {
-                        OutlinedTextField(
-                            value = status,
-                            onValueChange = {}, // Disable manual input
-                            label = { Text("Status") },
-                            modifier = Modifier.fillMaxWidth(),
-                            readOnly = true // Make the field read-only
-                        )
-                    }
+                            .clickable { if(isEnabled) isStatusDropdownExpanded = true }, // Open dropdown on click
+                        readOnly = true, // Make the field read-only
+                        trailingIcon = {
+                            IconButton(onClick = { if (isEnabled) isStatusDropdownExpanded = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Open Dropdown"
+                                )
+                            }
+                        }
+                    )
 
                     // Dropdown Menu
                     DropdownMenu(
                         expanded = isStatusDropdownExpanded,
                         onDismissRequest = { isStatusDropdownExpanded = false },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.width(200.dp)
                     ) {
                         statusOptions.forEach { option ->
                             DropdownMenuItem(
@@ -737,5 +1009,46 @@ private suspend fun updateCylinderDetails(db: FirebaseFirestore, serialNumber: S
     } catch (e: Exception) {
         println("Error updating cylinder details: ${e.message}")
         false // Return false on failure
+    }
+}
+
+private suspend fun deleteCylinder(
+    db: FirebaseFirestore,
+    serialNumber: String
+): Boolean {
+    return try {
+        // Fetch the password document to verify
+        val passwordDoc = db.collection("Passwords")
+            .document("Password")
+            .get()
+
+        // Fetch the existing cylinder details document
+        val cylinderDoc = db.collection("Cylinders")
+            .document("Cylinders")
+            .get()
+
+        if (passwordDoc.exists && cylinderDoc.exists) {
+            // Get the stored PIN
+            val storedPin = passwordDoc.get("Pin") as? String
+
+            // If pin verification is successful, proceed with deletion
+            val existingDetails = cylinderDoc.get("CylinderDetails") as? List<Map<String, String>> ?: emptyList()
+
+            val updatedCylinderDetails = existingDetails.filter {
+                it["Serial Number"] != serialNumber
+            }
+
+            // Save the updated array back to Firestore
+            db.collection("Cylinders")
+                .document("Cylinders")
+                .set(mapOf("CylinderDetails" to updatedCylinderDetails))
+
+            true
+        } else {
+            false
+        }
+    } catch (e: Exception) {
+        println("Error deleting cylinder: ${e.message}")
+        false
     }
 }

@@ -28,7 +28,8 @@ import org.example.iosfirebasehope.navigation.events.AllCustomersScreenEvent
 fun AllCustomersScreenUI(
     component: AllCustomersScreenComponent,
     db: FirebaseFirestore,
-    cylinderDetails: List<Map<String, String>>
+    cylinderDetails: List<Map<String, String>>,
+    gasList: List<String>
 ) {
     println("AllCustomersScreenUI : ${cylinderDetails}")
     var searchQuery by remember { mutableStateOf("") }
@@ -116,7 +117,7 @@ fun AllCustomersScreenUI(
             }
 
             // Display filtered list of customers
-            CustomerList(customerDetailsList = filteredCustomers, modifier = Modifier.padding(innerPadding), component = component,cylinderDetails)
+            CustomerList(customerDetailsList = filteredCustomers, modifier = Modifier.padding(innerPadding), component = component,cylinderDetails,gasList)
         }
     }
 }
@@ -126,7 +127,8 @@ fun CustomerList(
     customerDetailsList: List<Map<String, String>>,
     modifier: Modifier = Modifier,
     component: AllCustomersScreenComponent,
-    cylinderDetail:List<Map<String,String>>
+    cylinderDetail:List<Map<String,String>>,
+    gasList: List<String>
 ) {
     LazyColumn(
         modifier = modifier
@@ -134,7 +136,7 @@ fun CustomerList(
             .padding(16.dp)
     ) {
         items(customerDetailsList) { customer ->
-            CustomerDetailsCard(customer, component = component, cylinderDetail = cylinderDetail)
+            CustomerDetailsCard(customer, component = component, cylinderDetail = cylinderDetail, gasList = gasList)
             Spacer(modifier = Modifier.height(8.dp))
         }
     }
@@ -144,7 +146,8 @@ fun CustomerList(
 fun CustomerDetailsCard(
     customerDetails: Map<String, String>,
     component: AllCustomersScreenComponent,
-    cylinderDetail: List<Map<String,String>>
+    cylinderDetail: List<Map<String,String>>,
+    gasList: List<String>
 ) {
     val customerName = customerDetails["Name"] ?: ""
 
@@ -152,7 +155,7 @@ fun CustomerDetailsCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
-            .clickable(onClick = { component.onEvent(AllCustomersScreenEvent.OnCustomerClick(customerName,cylinderDetail)) }),
+            .clickable(onClick = { component.onEvent(AllCustomersScreenEvent.OnCustomerClick(gasList,customerName,cylinderDetail)) }),
         elevation = 4.dp,
         border = BorderStroke(1.dp, Color(0xFF2f80eb)) // Custom border color
     ) {

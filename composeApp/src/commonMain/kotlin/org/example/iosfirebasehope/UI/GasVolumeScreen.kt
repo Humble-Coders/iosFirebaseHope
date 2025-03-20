@@ -1,3 +1,5 @@
+package org.example.iosfirebasehope.UI
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -26,15 +28,18 @@ import dev.gitlive.firebase.firestore.FirebaseFirestore
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.launch
+import org.example.iosfirebasehope.UI.CombinedItem.LPG
 import org.example.iosfirebasehope.navigation.components.GasVolumeScreenComponent
 import org.example.iosfirebasehope.navigation.components.VolumeTypeScreenComponent
 import org.example.iosfirebasehope.navigation.events.GasVolumeScreenEvent
+import kotlin.text.get
+import kotlin.text.iterator
 
 data class VolumeStatusCounts(
     val volume: String,
     val full: Int,
     val empty: Int,
-    val sold: Int,
+    val issued: Int,
     val repair: Int,
     val atPlant: Int
 )
@@ -49,41 +54,64 @@ fun GasVolumeScreenUI(
     var volumes by remember { mutableStateOf(emptyList<String>()) }
     var searchQuery by remember { mutableStateOf("") }
     var filteredCylinders by remember { mutableStateOf(cylinderDetailList) }
-    var selectedStatus by remember { mutableStateOf("") }
-    var volumesAndSP by remember { mutableStateOf<Map<String, String>?>(null) } // State to store VolumesAndSP
-
-    println("gas id is $gasId")
+    var selectedStatus = remember { mutableStateOf("None") }
+    var volumesAndSP by remember { mutableStateOf<Map<String, String>?>(null) }
+    var showDialog by remember { mutableStateOf(false) }
+    var dialogCustomers by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var totalLpgCount by remember { mutableStateOf(0) }
+    var selectedVolumeType by remember { mutableStateOf("") }
+    var lpgFullMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var lpgEmptyMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
 
     LaunchedEffect(gasId) {
         try {
-            println("Fetching document for gasId: $gasId")
-
             val docSnapshot = db.collection("Gases").document(gasId).get()
             if (docSnapshot.exists) {
                 val fetchedVolumesAndSP = docSnapshot.get("VolumesAndSP") as? Map<String, String>
                 if (fetchedVolumesAndSP != null) {
-                    println("Fetched VolumesAndSP: $fetchedVolumesAndSP")
                     volumesAndSP = fetchedVolumesAndSP
-                    volumes = fetchedVolumesAndSP.keys.toList()
-                } else {
-                    println("VolumesAndSP is null or not a Map")
+                    val formattedVolumes = fetchedVolumesAndSP.keys.map { it.replace(",", ".") }
+                    volumes = formattedVolumes.toList()
                 }
-            } else {
-                println("Document with gasId: $gasId does not exist")
             }
         } catch (e: Exception) {
             println("Error fetching document: ${e.message}")
-            e.printStackTrace() // Print full stack trace for debugging
+        }
+    }
+    LaunchedEffect(gasId) {
+        if (gasId == "LPG") {
+            try {
+                val lpgDocument = db.collection("Cylinders").document("LPG").get()
+                lpgFullMap = lpgDocument.get("LPGFull") as? Map<String, Int> ?: emptyMap()
+                lpgEmptyMap = lpgDocument.get("LPGEmpty") as? Map<String, Int> ?: emptyMap()
+                totalLpgCount = lpgFullMap.values.sum() + lpgEmptyMap.values.sum()
+            } catch (e: Exception) {
+                println("Error fetching total LPG count: ${e.message}")
+            }
+        }
+    }
+    LaunchedEffect(gasId) {
+        if (gasId == "LPG") {
+            try {
+                val customersSnapshot = db.collection("Customers").document("LPG Issued").collection("Names").get()
+                var count = 0
+                for (customerDoc in customersSnapshot.documents) {
+                    val quantities = customerDoc.get("Quantities") as? Map<String, String>
+                    quantities?.values?.forEach { quantity ->
+                        count += quantity.toIntOrNull() ?: 0
+                    }
+                }
+                totalLpgCount = count
+            } catch (e: Exception) {
+                println("Error fetching total LPG count: ${e.message}")
+            }
         }
     }
 
-
-
-    // Calculate status counts for each volume
     val volumeStatusCounts = volumes.map { volume ->
         var full = 0
         var empty = 0
-        var sold = 0
+        var issued = 0
         var repair = 0
         var atPlant = 0
 
@@ -92,20 +120,27 @@ fun GasVolumeScreenUI(
                 when (cylinderDetail["Status"]) {
                     "Full" -> full++
                     "Empty" -> empty++
-                    "Sold" -> sold++
+                    "Issued" -> issued++
                     "Repair" -> repair++
                     "At Plant" -> atPlant++
                 }
             }
         }
 
-        VolumeStatusCounts(volume, full, empty, sold, repair, atPlant)
+        VolumeStatusCounts(volume, full, empty, issued, repair, atPlant)
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(gasId.replace(",", ".")) },
+                title = { if (gasId=="LPG")
+                {
+                    Text("LPG Issued Details")}
+                else {
+                    Text("$gasId")
+                }
+
+                },
                 backgroundColor = Color(0xFF2f80eb),
                 contentColor = Color.White,
                 navigationIcon = {
@@ -119,121 +154,173 @@ fun GasVolumeScreenUI(
             )
         }
     ) { innerPadding ->
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(4.dp),
-                horizontalArrangement = Arrangement.Center
+        if (gasId == "LPG") {
+            LazyColumn(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.padding(innerPadding).fillMaxSize()
             ) {
-                items(volumeStatusCounts) { volumeStatus ->
-                    VolumeCard(volumeStatus,cylinderDetailList, component, gasId)
+                item {
+                    Text(
+                        text = "Total LPG Issued: $totalLpgCount",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
+
+                volumesAndSP?.keys?.let { keys ->
+                    items(keys.toList()) { volumeType ->
+                        LPGVolumeCard(
+                            volumeType = volumeType,
+                            db = db,
+                            lpgFullMap = lpgFullMap,
+                            lpgEmptyMap = lpgEmptyMap,
+                            onCardClick = { customers ->
+                                dialogCustomers = customers
+                                showDialog = true
+                            },
+                            onVolumeSelected = { selectedVolumeType = it }
+                        )
+                    }
                 }
             }
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top=16.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    leadingIcon = {
-                        Icon(Icons.Default.Search, contentDescription = null)
-                    },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = {
-                                searchQuery = ""
-                                filteredCylinders = cylinderDetailList // Reset the list when cleared
-                            }) {
-                                Icon(
-                                    imageVector = Icons.Filled.Close,
-                                    contentDescription = "Clear Text"
-                                )
-                            }
-                        }
-                    },
-                    onValueChange = {
-                        searchQuery = it
-                        filteredCylinders = cylinderDetailList.filter { cylinder ->
-                            cylinder["Serial Number"]?.contains(searchQuery, ignoreCase = true) == true &&
-                                    (selectedStatus.isEmpty() || cylinder["Status"] == selectedStatus)
-                        }
-                    },
-                    placeholder = {
-                        Text("Search by Serial Number")
-                    },
+        } else {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                LazyRow(
                     modifier = Modifier
-                        .width(280.dp)
-                        .padding(end = 8.dp)
-                        .height(56.dp),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = TextFieldDefaults.outlinedTextFieldColors(
-                        focusedBorderColor = Color(0xFF2f80eb),
-                        unfocusedBorderColor = Color(0xFF2f80eb)
-                    ),
-                    keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done)
-                )
-
-                var expanded by remember { mutableStateOf(false) }
-                var selectedStatus by remember { mutableStateOf("") }
-
-                Box(
-                    modifier = Modifier
-
-                        .clickable { expanded = true }
-                        .width(120.dp).height(55.dp)
-                        .background(Color.White, RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFF2f80eb), RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center,
-
-
+                        .fillMaxWidth()
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.Center
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(start=16.dp,end=8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (selectedStatus.isEmpty()) "Filter" else selectedStatus,
-                            color = if (selectedStatus.isEmpty()) Color.Gray else Color.Black
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ArrowDropDown,
-                            contentDescription = null,
-                            modifier = Modifier.clickable { expanded = true }
-                        )
+                    items(volumeStatusCounts) { volumeStatus ->
+                        VolumeCard(volumeStatus, cylinderDetailList, component, gasId)
                     }
-
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                        modifier = Modifier.width(120.dp).padding(end=16.dp)
-                    ) {
-                        val statuses = listOf("", "Full", "Empty", "Repair", "Sold", "At Plant")
-                        statuses.forEach { status ->
-                            DropdownMenuItem(onClick = {
-                                selectedStatus = status
-                                expanded = false
-                                filteredCylinders = cylinderDetailList.filter { cylinder ->
-                                    (cylinder["Serial Number"]?.contains(searchQuery, ignoreCase = true) == true) &&
-                                            (selectedStatus.isEmpty() || cylinder["Status"] == selectedStatus)
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            if (searchQuery.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    searchQuery = ""
+                                    filteredCylinders = cylinderDetailList
+                                }) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Clear Text"
+                                    )
                                 }
-                            }) {
-                                Text(text = if (status.isEmpty()) "None" else status)
+                            }
+                        },
+                        onValueChange = {
+                            searchQuery = it
+                            filteredCylinders = cylinderDetailList.filter { cylinder ->
+                                cylinder["Serial Number"]?.contains(
+                                    searchQuery,
+                                    ignoreCase = true
+                                ) == true &&
+                                        (selectedStatus.value.isEmpty() || cylinder["Status"] == selectedStatus.value)
+                            }
+                        },
+                        placeholder = {
+                            Text("Search by Serial Number")
+                        },
+                        modifier = Modifier
+                            .width(280.dp)
+                            .padding(end = 8.dp)
+                            .height(56.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = TextFieldDefaults.outlinedTextFieldColors(
+                            focusedBorderColor = Color(0xFF2f80eb),
+                            unfocusedBorderColor = Color(0xFF2f80eb)
+                        ),
+                        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done)
+                    )
+
+                    var expanded by remember { mutableStateOf(false) }
+                    //   var selectedStatus by remember { mutableStateOf("None") }
+
+                    Box(
+                        modifier = Modifier
+                            .clickable { expanded = true }
+                            .width(120.dp).height(55.dp)
+                            .background(Color.White, RoundedCornerShape(8.dp))
+                            .border(1.dp, Color(0xFF2f80eb), RoundedCornerShape(8.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, end = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = if (selectedStatus.value.isEmpty()) "Filter" else selectedStatus.value,
+                                color = if (selectedStatus.value.isEmpty()) Color.Gray else Color.Black
+                            )
+                            Icon(
+                                imageVector = Icons.Default.ArrowDropDown,
+                                contentDescription = null,
+                                modifier = Modifier.clickable { expanded = true }
+                            )
+                        }
+                        LaunchedEffect(Unit) {
+                            filteredCylinders = cylinderDetailList.filter { cylinder ->
+                                (cylinder["Serial Number"]?.contains(
+                                    searchQuery,
+                                    ignoreCase = true
+                                ) == true) &&
+                                        (selectedStatus.value.isEmpty() || cylinder["Status"] == selectedStatus.value)
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = expanded,
+                            onDismissRequest = { expanded = false },
+                            modifier = Modifier.width(120.dp).padding(end = 16.dp)
+                        ) {
+                            val statuses = listOf("None", "Full", "Empty", "Repair", "Issued", "At Plant")
+                            statuses.forEach { status ->
+                                DropdownMenuItem(onClick = {
+                                    selectedStatus.value = status
+                                    expanded = false
+                                    filteredCylinders = cylinderDetailList.filter { cylinder ->
+                                        (cylinder["Serial Number"]?.contains(
+                                            searchQuery,
+                                            ignoreCase = true
+                                        ) == true) &&
+                                                (selectedStatus.value.isEmpty() || cylinder["Status"] == selectedStatus.value)
+                                    }
+                                }) {
+                                    Text(text = status)
+                                }
                             }
                         }
                     }
                 }
 
-
-
+                CylinderList(
+                    cylinderDetailsList = filteredCylinders,
+                    component = component,
+                    volumesAndSP = volumesAndSP,
+                    status = selectedStatus
+                )
             }
+        }
 
-
-
-            CylinderList(cylinderDetailsList = filteredCylinders, component = component, volumesAndSP = volumesAndSP)
+        if (showDialog) {
+            CustomerDialog(
+                customers = dialogCustomers,
+                onDismiss = { showDialog = false },
+                volumeType = selectedVolumeType
+            )
         }
     }
 }
@@ -260,7 +347,7 @@ fun VolumeCard(volumeStatus: VolumeStatusCounts,cylinderDetailsList: List<Map<St
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center, // Ensure items are centered
-             // Add vertical padding to the entire column
+            // Add vertical padding to the entire column
         ) {
             Text(
                 text = volumeStatus.volume.replace(",", "."),
@@ -271,7 +358,7 @@ fun VolumeCard(volumeStatus: VolumeStatusCounts,cylinderDetailsList: List<Map<St
 
             Text(text = "Full: ${volumeStatus.full}", fontSize = 12.sp)
             Text(text = "Empty: ${volumeStatus.empty}", fontSize = 12.sp)
-            Text(text = "Sold: ${volumeStatus.sold}", fontSize = 12.sp)
+            Text(text = "Issued: ${volumeStatus.issued}", fontSize = 12.sp)
             Text(text = "Repair: ${volumeStatus.repair}", fontSize = 12.sp)
             Text(text = "At Plant: ${volumeStatus.atPlant}", fontSize = 12.sp)
         }
@@ -284,11 +371,17 @@ fun CylinderList(
     cylinderDetailsList: List<Map<String, String>>,
     modifier: Modifier = Modifier,
     component: GasVolumeScreenComponent,
-    volumesAndSP: Map<String, Any>?
+    volumesAndSP: Map<String, Any>?,
+    status: MutableState<String>
 ) {
-    if (cylinderDetailsList.isEmpty()) {
+    if (cylinderDetailsList.isEmpty()&&status.value!="None") {
         Text("No cylinders found.", modifier = Modifier.padding(16.dp))
-    } else {
+    }
+    else if(cylinderDetailsList.isEmpty()&&status.value=="None")
+    {
+        Text("Please Select a Filter.", modifier = Modifier.padding(16.dp))
+    }
+    else {
         LazyColumn(
             modifier = modifier
                 .fillMaxSize()
@@ -393,35 +486,134 @@ fun CylinderDetailsCard2(
     }
 }
 
-fun getGasSymbol(gasName: String): String {
-    // Return the appropriate symbol based on the gas name
-    return when (gasName) {
-        "Oxygen" -> "O₂"
-        "Carbon Dioxide" -> "CO₂"
-        "Ammonia" -> "NH₃"
-        "Argon" -> "Ar"
-        "Nitrogen" -> "N₂"
-        "Hydrogen" -> "H"
-        "Helium" -> "He"
-        "LPG" -> "LPG"
-        "Argon Specto" -> "AS"
-        "Zero Air" -> "Z"
-        else -> ""
+@Composable
+fun LPGVolumeCard(
+    volumeType: String,
+    db: FirebaseFirestore,
+    lpgFullMap: Map<String, Int>,
+    lpgEmptyMap: Map<String, Int>,
+    onCardClick: (List<Pair<String, String>>) -> Unit,
+    onVolumeSelected: (String) -> Unit
+) {
+    var customers by remember { mutableStateOf<List<Pair<String, String>>>(emptyList()) }
+    var totalCount by remember { mutableStateOf(0) }
+    val fullCount = lpgFullMap[volumeType] ?: 0
+    val emptyCount = lpgEmptyMap[volumeType] ?: 0
+
+    LaunchedEffect(volumeType) {
+        try {
+            val customersList = mutableListOf<Pair<String, String>>()
+            val customersSnapshot = db.collection("Customers").document("LPG Issued").collection("Names").get()
+            var count = 0
+            for (customerDoc in customersSnapshot.documents) {
+                val quantities = customerDoc.get("Quantities") as? Map<String, String>
+                quantities?.forEach { (volume, quantity) ->
+                    if (volume == volumeType) {
+                        customersList.add(customerDoc.id to quantity)
+                        count += quantity.toIntOrNull() ?: 0
+                    }
+                }
+            }
+            customers = customersList
+            totalCount = count
+        } catch (e: Exception) {
+            println("Error fetching customers: ${e.message}")
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .height(170.dp)
+            .width(170.dp)
+            .padding(16.dp)
+            .clickable(onClick = { onCardClick(customers); onVolumeSelected(volumeType) }),
+        elevation = 4.dp,
+        border = BorderStroke(1.dp, Color(0xFF2f80eb))
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = volumeType.replace(",", "."),
+                color = Color.Black,
+                fontWeight = FontWeight.Bold,
+                fontSize = 16.sp
+            )
+            Text(
+                text = "Full: $fullCount",
+                color = Color.Black,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "Empty: $emptyCount",
+                color = Color.Black,
+                fontSize = 14.sp
+            )
+            Text(
+                text = "Issued: $totalCount",
+                color = Color.Black,
+                fontSize = 14.sp
+            )
+
+        }
     }
 }
 
-fun getGasColor(gasName: String): Color {
-    return when (gasName) {
-        "Oxygen" -> Color(0xFF2196F3) // Blue
-        "Carbon Dioxide" -> Color(0xFFFF9800) // Orange
-        "Ammonia" -> Color(0xFF795548) // Brown
-        "Argon" -> Color(0xFF9C27B0) // Purple
-        "Nitrogen" -> Color(0xFF4CAF50) // Green
-        "Hydrogen" -> Color(0xFFFF5722) // Deep Orange
-        "Helium" -> Color(0xFF3F51B5) // Indigo
-        "LPG" -> Color(0xFF009688) // Teal
-        "Argon Specto" -> Color(0xFF673AB7) // Deep Purple
-        "Zero Air" -> Color(0xFFE91E63) // Pink
-        else -> Color.Gray // Default color for any other gases
-    }
+@Composable
+fun CustomerDialog(
+    customers: List<Pair<String, String>>,
+    onDismiss: () -> Unit,
+    volumeType: String
+) {
+    val volumeTypeFormatted = volumeType.replace(",", ".")
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "Customers of $volumeTypeFormatted LPG",
+                fontWeight = FontWeight.Bold,
+                fontSize = 18.sp,
+                color = Color(0xFF2f80eb)
+            )
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+            ) {
+                items(customers) { (customerName, quantity) ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = customerName,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black
+                        )
+                        Text(
+                            text = quantity,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Gray
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF2f80eb))
+            ) {
+                Text("Close", color = Color.White, fontWeight = FontWeight.Bold)
+            }
+        }
+    )
 }
